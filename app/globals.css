@@ -1,0 +1,109 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Import Crayon/Thesys C1 styles */
+@import "@crayonai/react-core/styles.css";
+
+:root {
+  --background: #030712;
+  --foreground: #f9fafb;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+/* Customize C1 Thread for dark mode */
+[data-crayon-thread] {
+  --crayon-bg-primary: #111827;
+  --crayon-bg-secondary: #1f2937;
+  --crayon-bg-tertiary: #374151;
+  --crayon-text-primary: #f9fafb;
+  --crayon-text-secondary: #9ca3af;
+  --crayon-text-muted: #6b7280;
+  --crayon-border: #374151;
+  --crayon-accent: #3b82f6;
+  --crayon-accent-hover: #2563eb;
+}
+
+/* Message bubbles */
+[data-crayon-message="user"] {
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  color: white;
+}
+
+[data-crayon-message="assistant"] {
+  background: #1f2937;
+  border: 1px solid #374151;
+}
+
+/* Input styling */
+[data-crayon-input] {
+  background: #1f2937;
+  border: 1px solid #374151;
+  color: white;
+}
+
+[data-crayon-input]:focus {
+  border-color: #3b82f6;
+  outline: none;
+}
+
+/* Tables in markdown */
+[data-crayon-markdown] table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+}
+
+[data-crayon-markdown] th,
+[data-crayon-markdown] td {
+  padding: 0.5rem 1rem;
+  border: 1px solid #374151;
+  text-align: left;
+}
+
+[data-crayon-markdown] th {
+  background: #1f2937;
+  font-weight: 600;
+}
+
+/* Code blocks */
+[data-crayon-markdown] pre {
+  background: #1f2937;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  overflow-x: auto;
+}
+
+/* Lists */
+[data-crayon-markdown] ul {
+  list-style-type: disc;
+  padding-left: 1.5rem;
+}
+
+[data-crayon-markdown] ol {
+  list-style-type: decimal;
+  padding-left: 1.5rem;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1f2937;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #374151;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #4b5563;
+}

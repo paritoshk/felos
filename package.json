@@ -1,0 +1,32 @@
+{
+  "name": "adgen-agent",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "next": "14.2.5",
+    "react": "^18",
+    "react-dom": "^18",
+    "@anthropic-ai/sdk": "^0.52.0",
+    "@crayonai/react-core": "^0.1.16",
+    "@crayonai/stream": "^0.1.16",
+    "openai": "^4.52.0",
+    "mongodb": "^6.8.0",
+    "zod": "^3.23.0",
+    "zod-to-json-schema": "^3.23.0",
+    "uuid": "^10.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/uuid": "^10",
+    "typescript": "^5",
+    "tailwindcss": "^3.4.1",
+    "postcss": "^8",
+    "autoprefixer": "^0.10.0"
+  }
+}
