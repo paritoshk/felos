@@ -379,7 +379,29 @@ async function executeTool(
 }
 
 export async function POST(req: NextRequest) {
-  const { messages, threadId } = await req.json();
+  const body = await req.json();
+  console.log("Received request body:", JSON.stringify(body, null, 2));
+
+  // Handle Thesys SDK format: { prompt: { role, content }, threadId }
+  let messages: Array<{ role: string; content: string }> = [];
+
+  if (body.prompt) {
+    // Thesys SDK format - single prompt object
+    let content = body.prompt.content || "";
+
+    // Extract content from <content thesys="true">...</content> wrapper
+    const thesysMatch = content.match(/<content[^>]*>([\s\S]*?)<\/content>/);
+    if (thesysMatch) {
+      content = thesysMatch[1].trim();
+    }
+
+    messages = [{ role: body.prompt.role || "user", content }];
+  } else if (body.messages) {
+    // Standard OpenAI format
+    messages = Array.isArray(body.messages) ? body.messages : [body.messages];
+  }
+
+  const threadId = body.threadId || body.thread_id || body.sessionId;
   const sessionId = threadId || "default-session";
 
   // Create a readable stream for plain text response
@@ -395,7 +417,10 @@ export async function POST(req: NextRequest) {
   // Build messages array with system prompt
   const allMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
     { role: "system", content: systemPrompt },
-    ...messages,
+    ...messages.map((m) => ({
+      role: m.role as "user" | "assistant" | "system",
+      content: m.content,
+    })),
   ];
 
   // Process in background
