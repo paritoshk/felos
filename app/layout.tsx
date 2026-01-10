@@ -5,8 +5,8 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "AdGen Agent | x402 + Thesys C1",
-  description: "AI marketing agent with x402 micropayments. $0.09 per ad, not $199/month.",
+  title: "Felous AI | Ad Generation with x402",
+  description: "AI marketing agent powered by x402 micropayments. Pay per ad, not per month.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
