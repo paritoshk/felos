@@ -2,10 +2,10 @@ import { NextRequest } from "next/server";
 import OpenAI from "openai";
 import { systemPrompt } from "@/lib/systemPrompt";
 
-// Initialize Thesys C1 client (OpenAI-compatible)
+// Initialize Fireworks client (OpenAI-compatible)
 const client = new OpenAI({
-  baseURL: "https://api.thesys.dev/v1/embed",
-  apiKey: process.env.THESYS_API_KEY || "",
+  baseURL: "https://api.fireworks.ai/inference/v1",
+  apiKey: process.env.FIREWORKS_API_KEY || "",
 });
 
 export async function POST(req: NextRequest) {
@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
   ];
 
   const response = await client.chat.completions.create({
-    model: "c1-nightly",
+    model: "accounts/fireworks/models/llama-v3p3-70b-instruct",
     messages: allMessages,
     stream: true,
   });
