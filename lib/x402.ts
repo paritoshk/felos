@@ -1,6 +1,7 @@
 import { x402Client, wrapFetchWithPayment, x402HTTPClient } from "@x402/fetch";
 import { registerExactEvmScheme } from "@x402/evm/exact/client";
 import { privateKeyToAccount } from "viem/accounts";
+import { getWalletSigner } from "./wallet";
 
 // x402 client singleton
 let x402ClientInstance: x402Client | null = null;
@@ -16,17 +17,9 @@ export interface X402PaymentResult {
 export async function initX402Client() {
   if (x402ClientInstance) return { client: x402ClientInstance, fetch: paymentFetch! };
 
-  // Check if we have a private key for signing
-  const privateKey = process.env.X402_PRIVATE_KEY;
-
-  if (!privateKey) {
-    console.warn("X402_PRIVATE_KEY not set - x402 payments disabled");
-    return { client: null, fetch: globalThis.fetch };
-  }
-
   try {
-    // Create signer from private key
-    const signer = privateKeyToAccount(privateKey as `0x${string}`);
+    // Try to get signer from CDP wallet first
+    const signer = await getWalletSigner();
 
     // Create x402 client and register EVM scheme (Base network)
     x402ClientInstance = new x402Client();
@@ -39,7 +32,18 @@ export async function initX402Client() {
 
     return { client: x402ClientInstance, fetch: paymentFetch };
   } catch (error) {
-    console.error("Failed to initialize x402 client:", error);
+    // Fallback: try private key directly
+    const privateKey = process.env.X402_PRIVATE_KEY;
+    if (privateKey) {
+      const signer = privateKeyToAccount(privateKey as `0x${string}`);
+      x402ClientInstance = new x402Client();
+      registerExactEvmScheme(x402ClientInstance, { signer });
+      paymentFetch = wrapFetchWithPayment(globalThis.fetch, x402ClientInstance);
+      console.log("x402 client initialized with private key:", signer.address);
+      return { client: x402ClientInstance, fetch: paymentFetch };
+    }
+
+    console.warn("x402 payments disabled - no wallet configured");
     return { client: null, fetch: globalThis.fetch };
   }
 }
