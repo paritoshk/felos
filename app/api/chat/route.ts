@@ -4,6 +4,8 @@ import { makeC1Response } from "@thesysai/genui-sdk/server";
 import { systemPrompt } from "@/lib/systemPrompt";
 import { connectToDatabase, X402_COSTS, SUBSCRIPTION_COSTS } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 // Initialize Thesys C1 client
 const client = new OpenAI({
   apiKey: process.env.THESYS_API_KEY || "",
