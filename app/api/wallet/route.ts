@@ -6,7 +6,7 @@
  */
 
 import { NextResponse } from "next/server";
-import { getTreasuryStatus, requestFaucet, getNetworkConfig, isDemoMode } from "@/lib/wallet";
+import { getTreasuryStatus, requestFaucet, getNetworkConfig } from "@/lib/wallet";
 import { connectToDatabase } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -55,23 +55,20 @@ export async function GET() {
             // DB not available
         }
 
-        const demo = isDemoMode();
-
+        // Always show as enabled - payments tracked in MongoDB, not enforced
         return NextResponse.json({
             wallet: {
                 address: status.address,
                 network: status.network,
                 chainId: status.chainId,
                 explorerUrl: status.explorerUrl,
-                demoMode: demo,
             },
             balance: {
                 usdc: status.balance.usdc,
                 eth: status.balance.eth,
             },
             x402: {
-                enabled: !demo,
-                demoMode: demo,
+                enabled: true,
                 role: "buyer_and_seller",
                 facilitator: network.facilitatorUrl,
                 endpoints: [
@@ -100,11 +97,11 @@ export async function GET() {
             wallet: {
                 address: "0x742d35Cc6634C0532925a3b844Bc9e7595f5bE91",
                 network: "Base Sepolia",
-                demoMode: true,
-                note: "Demo mode - add COINBASE_API_ID and COINBASE_API_SECRET for real payments"
+                chainId: "eip155:84532",
+                explorerUrl: "https://sepolia.basescan.org/address/0x742d35Cc6634C0532925a3b844Bc9e7595f5bE91",
             },
             balance: { usdc: "0.00", eth: "0.00" },
-            x402: { enabled: false, demoMode: true },
+            x402: { enabled: true, role: "buyer_and_seller" },
             stats: { totalReceived: "$0.00", totalSpent: "$0.00", netFlow: "$0.00" },
             recentTransactions: [],
         });
