@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { C1Chat, ThemeProvider } from "@thesysai/genui-sdk";
 import { WalletPanel } from "@/components/WalletPanel";
 import { AdGenerationForm, AdFormData } from "@/components/AdGenerationForm";
@@ -10,7 +10,6 @@ export default function Home() {
   const [showForm, setShowForm] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationResult, setGenerationResult] = useState<string | null>(null);
-  const chatRef = useRef<any>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -201,7 +200,6 @@ export default function Home() {
         {/* Right Panel - Chat */}
         <div className="flex-1 relative">
           <C1Chat
-            ref={chatRef}
             formFactor="full-page"
             apiUrl="/api/chat"
             agentName="Felous AI"
