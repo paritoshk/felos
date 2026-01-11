@@ -36,7 +36,7 @@ let demoMode = false;
  * Check if running in demo mode (no Coinbase credentials)
  */
 export function isDemoMode(): boolean {
-    return !process.env.COINBASE_API_ID || !process.env.COINBASE_API_SECRET;
+    return !process.env.COINBASE_API_ID || !process.env.COINBASE_API_SECRET || !process.env.CDP_WALLET_SECRET;
 }
 
 // Network configuration
@@ -71,14 +71,20 @@ export async function initCdpClient(): Promise<CdpClient> {
 
     const apiKeyId = process.env.COINBASE_API_ID;
     const apiKeySecret = process.env.COINBASE_API_SECRET;
+    const walletSecret = process.env.CDP_WALLET_SECRET;
 
     if (!apiKeyId || !apiKeySecret) {
         throw new Error("Coinbase credentials required: COINBASE_API_ID, COINBASE_API_SECRET");
     }
 
+    if (!walletSecret) {
+        throw new Error("CDP_WALLET_SECRET required for wallet operations");
+    }
+
     cdpClient = new CdpClient({
         apiKeyId,
         apiKeySecret,
+        walletSecret,
     });
     return cdpClient;
 }
