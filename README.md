@@ -113,13 +113,6 @@ Try these in the chat:
 3. **"Show me my spending report"**
 4. **"How much would this cost with subscriptions?"**
 
-## Judging Criteria ✅
-
-- [x] **Thesys C1** — Generative UI chat interface
-- [x] **MongoDB** — Transaction logging + session state
-- [x] **x402** — Real micropayments per tool call
-- [x] **Agentic** — Autonomous tool selection
-- [x] **Business Value** — 99.95% cost savings
 
 ## Tagline
 
