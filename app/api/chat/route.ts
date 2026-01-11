@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { systemPrompt } from "@/lib/systemPrompt";
 import { connectToDatabase, X402_COSTS, SUBSCRIPTION_COSTS } from "@/lib/db";
+import { setImage } from "@/lib/imageStore";
 
 // Initialize Thesys C1 client
 const client = new OpenAI({
@@ -224,8 +225,11 @@ async function generateAdImage(prompt: string, sessionId: string) {
     const base64 = Buffer.from(arrayBuffer).toString('base64');
     const base64DataUrl = `data:image/png;base64,${base64}`;
 
-    // Return the full base64 data URL directly in the response
-    const imageUrl = base64DataUrl;
+    // Store image and return short URL (avoids 209k token overflow)
+    const imageId = `img_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    const imageKey = `${sessionId}:${imageId}`;
+    setImage(imageKey, base64DataUrl);
+    const imageUrl = `/api/image/${imageId}?session=${sessionId}`;
 
     // Log transaction to MongoDB
     try {
@@ -241,11 +245,11 @@ async function generateAdImage(prompt: string, sessionId: string) {
       console.error("MongoDB error:", e);
     }
 
-    return { 
-      success: true, 
-      imageUrl, // Full base64 data URL
-      cost: X402_COSTS.image, 
-      durationMs 
+    return {
+      success: true,
+      imageUrl, // Short URL reference (actual image served via /api/image)
+      cost: X402_COSTS.image,
+      durationMs
     };
   } catch (error) {
     console.error("Error generating image:", error);
