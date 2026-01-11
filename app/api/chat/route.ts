@@ -191,133 +191,64 @@ async function generateAdImage(prompt: string, sessionId: string) {
   const startTime = Date.now();
   const API_KEY = process.env.FIREWORKS_API_KEY;
   
-  // Use the workflow endpoint for FLUX Kontext Pro
-  const WORKFLOW_URL = "https://api.fireworks.ai/inference/v1/workflows/accounts/fireworks/models/flux-kontext-pro/text_to_image";
-  
   try {
-    // Step 1: Submit the generation request
-    console.log("Submitting image generation request...");
-    const submitResponse = await fetch(WORKFLOW_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-        "Authorization": `Bearer ${API_KEY}`,
-      },
-      body: JSON.stringify({ 
-        prompt: `Professional advertisement: ${prompt}. Clean, modern, high-quality product photography style.`,
-        width: 1024,
-        height: 1024,
-      }),
-    });
-
-    if (!submitResponse.ok) {
-      const errorText = await submitResponse.text();
-      console.error("Submit error:", errorText);
-      return { success: false, error: errorText };
-    }
-
-    const submitResult = await submitResponse.json();
-    const requestId = submitResult.id || submitResult.request_id;
-    
-    if (!requestId) {
-      console.error("No request_id in response:", submitResult);
-      // Check if image is returned directly
-      if (submitResult.output?.url || submitResult.data?.[0]?.url) {
-        const imageUrl = submitResult.output?.url || submitResult.data[0].url;
-        const durationMs = Date.now() - startTime;
-        
-        // Log to MongoDB
-        try {
-          const db = await connectToDatabase();
-          await db.collection("transactions").insertOne({
-            sessionId,
-            service: "flux-kontext-pro",
-            amount: X402_COSTS.image,
-            durationMs,
-            timestamp: new Date(),
-          });
-        } catch (e) {
-          console.error("MongoDB error:", e);
-        }
-        
-        return { success: true, imageUrl, cost: X402_COSTS.image, durationMs };
-      }
-      return { success: false, error: "No request_id returned" };
-    }
-
-    console.log(`Request submitted with ID: ${requestId}`);
-
-    // Step 2: Poll for result
-    const POLL_URL = `${WORKFLOW_URL}/get_result`;
-    
-    for (let attempt = 0; attempt < 60; attempt++) {
-      await new Promise(r => setTimeout(r, 1000));
-      
-      console.log(`Polling attempt ${attempt + 1}/60...`);
-      
-      const pollResponse = await fetch(POLL_URL, {
+    // Use SDXL for reliable image generation
+    const response = await fetch(
+      "https://api.fireworks.ai/inference/v1/image_generation/accounts/fireworks/models/stable-diffusion-xl-1024-v1-0",
+      {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Accept": "application/json",
-          "Authorization": `Bearer ${API_KEY}`,
+          Authorization: `Bearer ${API_KEY}`,
         },
-        body: JSON.stringify({ id: requestId }),
-      });
-
-      let pollResult;
-      if (!pollResponse.ok) {
-        const errorText = await pollResponse.text();
-        console.error(`Poll error (attempt ${attempt + 1}):`, errorText);
-        if (errorText.includes("Task not found") && attempt < 10) {
-          // Sometimes the task isn't immediately available, wait a bit more
-          continue;
-        }
-        // If it's not a "Task not found" error, skip this attempt
-        continue;
+        body: JSON.stringify({
+          prompt: `Professional advertisement: ${prompt}. Clean, modern, high-quality product photography style.`,
+          cfg_scale: 7,
+          height: 1024,
+          width: 1024,
+          steps: 30,
+        }),
       }
-      
-      pollResult = await pollResponse.json();
-      console.log(`Poll status: ${pollResult.status}`);
+    );
 
-      if (pollResult.status === "Ready" || pollResult.status === "Complete" || pollResult.status === "Finished") {
-        // Get image URL from result
-        const imageUrl = pollResult.result?.sample || 
-                        pollResult.result?.url ||
-                        pollResult.output?.url ||
-                        pollResult.data?.[0]?.url;
-        
-        if (imageUrl) {
-          const durationMs = Date.now() - startTime;
-          
-          // Log to MongoDB
-          try {
-            const db = await connectToDatabase();
-            await db.collection("transactions").insertOne({
-              sessionId,
-              service: "flux-kontext-pro",
-              amount: X402_COSTS.image,
-              durationMs,
-              timestamp: new Date(),
-            });
-          } catch (e) {
-            console.error("MongoDB error:", e);
-          }
-          
-          return { success: true, imageUrl, cost: X402_COSTS.image, durationMs };
-        }
-      }
+    const durationMs = Date.now() - startTime;
 
-      if (pollResult.status === "Failed" || pollResult.status === "Error") {
-        console.error("Generation failed:", pollResult);
-        return { success: false, error: pollResult.error || "Generation failed" };
-      }
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("SDXL API error:", errorText);
+      return { success: false, error: "Failed to generate image" };
     }
 
-    return { success: false, error: "Timeout waiting for image" };
+    // SDXL returns raw PNG data, convert to base64
+    const arrayBuffer = await response.arrayBuffer();
+    const base64 = Buffer.from(arrayBuffer).toString('base64');
+    const base64DataUrl = `data:image/png;base64,${base64}`;
+
+    // Return the full base64 data URL directly in the response
+    const imageUrl = base64DataUrl;
+
+    // Log transaction to MongoDB
+    try {
+      const db = await connectToDatabase();
+      await db.collection("transactions").insertOne({
+        sessionId,
+        service: "sdxl",
+        amount: X402_COSTS.image,
+        durationMs,
+        timestamp: new Date(),
+      });
+    } catch (e) {
+      console.error("MongoDB error:", e);
+    }
+
+    return { 
+      success: true, 
+      imageUrl, // Full base64 data URL
+      cost: X402_COSTS.image, 
+      durationMs 
+    };
   } catch (error) {
-    console.error("Image generation error:", error);
+    console.error("Error generating image:", error);
     return { success: false, error: String(error) };
   }
 }
@@ -486,7 +417,7 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "generateAdImage",
-      description: "Generate an ad image using FLUX Kontext Pro. Costs $0.04 via x402.",
+      description: "Generate an ad image using SDXL. Costs $0.04 via x402. Returns base64 image data directly in the response.",
       parameters: {
         type: "object",
         properties: {
