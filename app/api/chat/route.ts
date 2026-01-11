@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
+import { makeC1Response } from "@thesysai/genui-sdk/server";
 import { systemPrompt } from "@/lib/systemPrompt";
 import { connectToDatabase, X402_COSTS, SUBSCRIPTION_COSTS } from "@/lib/db";
 
@@ -59,7 +60,6 @@ async function scrapeProduct(url: string, sessionId: string) {
         url,
       };
     } else {
-      // Demo fallback
       productData = {
         name: "Premium Product",
         brand: "Quality Brand",
@@ -71,7 +71,6 @@ async function scrapeProduct(url: string, sessionId: string) {
       };
     }
 
-    // Log to MongoDB
     try {
       const db = await connectToDatabase();
       await db.collection("transactions").insertOne({
@@ -85,12 +84,7 @@ async function scrapeProduct(url: string, sessionId: string) {
       console.error("MongoDB error:", e);
     }
 
-    return {
-      success: true,
-      productData,
-      cost: X402_COSTS.scrape,
-      durationMs,
-    };
+    return { success: true, productData, cost: X402_COSTS.scrape, durationMs };
   } catch (error) {
     return { success: false, error: String(error) };
   }
@@ -107,7 +101,6 @@ async function generateAdCopy(
   const startTime = Date.now();
 
   try {
-    // Use Fireworks directly for ad copy generation
     const fireworksClient = new OpenAI({
       baseURL: "https://api.fireworks.ai/inference/v1",
       apiKey: process.env.FIREWORKS_API_KEY || "",
@@ -127,12 +120,9 @@ async function generateAdCopy(
         {
           role: "system",
           content:
-            "Generate 3 ad variations as JSON array. Each with: headline, bodyCopy, cta, tone (urgent/playful/premium). Use the product features and reviews to make compelling ads. Return ONLY valid JSON array, no markdown.",
+            "Generate 3 ad variations as JSON array. Each with: headline, bodyCopy, cta, tone (urgent/playful/premium). Return ONLY valid JSON array, no markdown.",
         },
-        {
-          role: "user",
-          content: productInfo,
-        },
+        { role: "user", content: productInfo },
       ],
       max_tokens: 600,
     });
@@ -147,24 +137,9 @@ async function generateAdCopy(
       adVariations = JSON.parse(content || "[]");
     } catch {
       adVariations = [
-        {
-          headline: `Get ${productName} Now`,
-          bodyCopy: "Limited time offer. Don't miss out!",
-          cta: "Buy Now",
-          tone: "urgent",
-        },
-        {
-          headline: `Love Your ${productName}`,
-          bodyCopy: "Join thousands of happy customers.",
-          cta: "Try It",
-          tone: "playful",
-        },
-        {
-          headline: `Premium ${productName}`,
-          bodyCopy: "Experience luxury and quality.",
-          cta: "Discover",
-          tone: "premium",
-        },
+        { headline: `Get ${productName} Now`, bodyCopy: "Limited time offer!", cta: "Buy Now", tone: "urgent" },
+        { headline: `Love Your ${productName}`, bodyCopy: "Join happy customers.", cta: "Try It", tone: "playful" },
+        { headline: `Premium ${productName}`, bodyCopy: "Experience quality.", cta: "Discover", tone: "premium" },
       ];
     }
 
@@ -241,10 +216,7 @@ async function generateAdImage(prompt: string, sessionId: string) {
 async function getSpendingReport(sessionId: string) {
   try {
     const db = await connectToDatabase();
-    const transactions = await db
-      .collection("transactions")
-      .find({ sessionId })
-      .toArray();
+    const transactions = await db.collection("transactions").find({ sessionId }).toArray();
 
     const totalSpent = transactions.reduce((sum, t) => sum + t.amount, 0);
     const byService: Record<string, number> = {};
@@ -253,49 +225,37 @@ async function getSpendingReport(sessionId: string) {
     });
 
     const savings = SUBSCRIPTION_COSTS.total - totalSpent;
-    const adsForSubPrice = Math.floor(
-      SUBSCRIPTION_COSTS.total / X402_COSTS.total
-    );
+    const adsForSubPrice = Math.floor(SUBSCRIPTION_COSTS.total / X402_COSTS.total);
 
     return {
       totalSpent: `$${totalSpent.toFixed(2)}`,
       byService,
       subscriptionCost: `$${SUBSCRIPTION_COSTS.total}/mo`,
-      subscriptionBreakdown: SUBSCRIPTION_COSTS,
       savings: `$${savings.toFixed(2)}`,
       savingsPercent: ((savings / SUBSCRIPTION_COSTS.total) * 100).toFixed(1),
       adsForSubscriptionPrice: adsForSubPrice,
     };
-  } catch (e) {
+  } catch {
     return {
       totalSpent: "$0.00",
       byService: {},
       subscriptionCost: `$${SUBSCRIPTION_COSTS.total}/mo`,
       savings: `$${SUBSCRIPTION_COSTS.total}`,
-      savingsPercent: "100",
-      adsForSubscriptionPrice: Math.floor(
-        SUBSCRIPTION_COSTS.total / X402_COSTS.total
-      ),
+      adsForSubscriptionPrice: Math.floor(SUBSCRIPTION_COSTS.total / X402_COSTS.total),
     };
   }
 }
 
-// Tool definitions for OpenAI-compatible API
+// Tool definitions
 const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
   {
     type: "function",
     function: {
       name: "scrapeProduct",
-      description:
-        "Scrape a product URL to extract product info. Costs $0.01 via x402. Use when user provides a URL.",
+      description: "Scrape a product URL to extract product info. Costs $0.01 via x402.",
       parameters: {
         type: "object",
-        properties: {
-          url: {
-            type: "string",
-            description: "The product page URL to scrape",
-          },
-        },
+        properties: { url: { type: "string", description: "The product page URL" } },
         required: ["url"],
       },
     },
@@ -304,16 +264,15 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "generateAdCopy",
-      description:
-        "Generate 3 ad copy variations (urgent, playful, premium). Costs $0.02 via x402.",
+      description: "Generate 3 ad copy variations (urgent, playful, premium). Costs $0.02 via x402.",
       parameters: {
         type: "object",
         properties: {
-          productName: { type: "string", description: "Name of the product" },
-          productDescription: { type: "string", description: "Description of the product" },
-          brand: { type: "string", description: "Brand name (optional)" },
-          features: { type: "array", items: { type: "string" }, description: "Product features (optional)" },
-          reviews: { type: "string", description: "Review summary (optional)" },
+          productName: { type: "string" },
+          productDescription: { type: "string" },
+          brand: { type: "string" },
+          features: { type: "array", items: { type: "string" } },
+          reviews: { type: "string" },
         },
         required: ["productName", "productDescription"],
       },
@@ -326,12 +285,7 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       description: "Generate an ad image using FLUX.1. Costs $0.06 via x402.",
       parameters: {
         type: "object",
-        properties: {
-          prompt: {
-            type: "string",
-            description: "Description of the image to generate",
-          },
-        },
+        properties: { prompt: { type: "string", description: "Image description" } },
         required: ["prompt"],
       },
     },
@@ -340,23 +294,13 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "getSpendingReport",
-      description:
-        "Get x402 spending breakdown and savings vs subscriptions. Use when user asks about spending or savings.",
-      parameters: {
-        type: "object",
-        properties: {},
-        required: [],
-      },
+      description: "Get x402 spending breakdown and savings vs subscriptions.",
+      parameters: { type: "object", properties: {}, required: [] },
     },
   },
 ];
 
-// Execute tool by name
-async function executeTool(
-  name: string,
-  args: Record<string, unknown>,
-  sessionId: string
-) {
+async function executeTool(name: string, args: Record<string, unknown>, sessionId: string) {
   switch (name) {
     case "scrapeProduct":
       return await scrapeProduct(args.url as string, sessionId);
@@ -380,103 +324,74 @@ async function executeTool(
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  console.log("Received request body:", JSON.stringify(body, null, 2));
 
-  // Handle Thesys SDK format: { prompt: { role, content }, threadId }
-  let messages: Array<{ role: string; content: string }> = [];
+  // Parse request - handle both C1Chat format and standard format
+  let userContent = "";
 
   if (body.prompt) {
-    // Thesys SDK format - single prompt object
+    // C1Chat format: { prompt: { role, content }, threadId }
     let content = body.prompt.content || "";
-
-    // Extract content from <content thesys="true">...</content> wrapper
     const thesysMatch = content.match(/<content[^>]*>([\s\S]*?)<\/content>/);
-    if (thesysMatch) {
-      content = thesysMatch[1].trim();
-    }
-
-    messages = [{ role: body.prompt.role || "user", content }];
+    userContent = thesysMatch ? thesysMatch[1].trim() : content;
   } else if (body.messages) {
-    // Standard OpenAI format
-    messages = Array.isArray(body.messages) ? body.messages : [body.messages];
+    // Standard format: { messages: [...], threadId }
+    const msgs = Array.isArray(body.messages) ? body.messages : [body.messages];
+    const lastUserMsg = msgs.filter((m: { role: string }) => m.role === "user").pop();
+    userContent = lastUserMsg?.content || "";
   }
 
-  const threadId = body.threadId || body.thread_id || body.sessionId;
-  const sessionId = threadId || "default-session";
+  const sessionId = body.threadId || body.thread_id || "default-session";
+  const c1Response = makeC1Response();
 
-  // Create a readable stream for plain text response
-  const encoder = new TextEncoder();
-  const stream = new TransformStream();
-  const writer = stream.writable.getWriter();
-
-  // Helper to write to stream
-  const writeToStream = async (text: string) => {
-    await writer.write(encoder.encode(text));
-  };
-
-  // Build messages array with system prompt
-  const allMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+  // Build messages for the API
+  const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
     { role: "system", content: systemPrompt },
-    ...messages.map((m) => ({
-      role: m.role as "user" | "assistant" | "system",
-      content: m.content,
-    })),
+    { role: "user", content: userContent },
   ];
+
+  const meta = {
+    thesys: JSON.stringify({
+      c1_included_components: ["Layout"],
+    }),
+  };
 
   // Process in background
   (async () => {
     try {
-      // Initial completion with tools
-      let response = await client.chat.completions.create({
-        model: "c1/anthropic/claude-sonnet-4/v-20251230",
-        messages: allMessages,
+      const response = await client.chat.completions.create({
+        model: "c1/openai/gpt-5/v-20251230",
+        messages,
         tools,
         stream: true,
+        metadata: meta,
       });
 
-      let toolCalls: {
-        id: string;
-        name: string;
-        arguments: string;
-      }[] = [];
+      let toolCalls: { id: string; name: string; arguments: string }[] = [];
       let currentContent = "";
 
-      // Process the stream
       for await (const chunk of response) {
         const delta = chunk.choices[0]?.delta;
 
-        // Handle content streaming
         if (delta?.content) {
           currentContent += delta.content;
-          await writeToStream(delta.content);
+          c1Response.writeContent(delta.content);
         }
 
-        // Handle tool calls
         if (delta?.tool_calls) {
           for (const toolCall of delta.tool_calls) {
             const index = toolCall.index;
             if (!toolCalls[index]) {
-              toolCalls[index] = {
-                id: toolCall.id || "",
-                name: toolCall.function?.name || "",
-                arguments: "",
-              };
+              toolCalls[index] = { id: toolCall.id || "", name: toolCall.function?.name || "", arguments: "" };
             }
             if (toolCall.id) toolCalls[index].id = toolCall.id;
-            if (toolCall.function?.name)
-              toolCalls[index].name = toolCall.function.name;
-            if (toolCall.function?.arguments)
-              toolCalls[index].arguments += toolCall.function.arguments;
+            if (toolCall.function?.name) toolCalls[index].name = toolCall.function.name;
+            if (toolCall.function?.arguments) toolCalls[index].arguments += toolCall.function.arguments;
           }
         }
 
-        // Check if we're done with this response
         if (chunk.choices[0]?.finish_reason === "tool_calls" && toolCalls.length > 0) {
-          // Execute all tool calls
-          const toolResults: OpenAI.Chat.Completions.ChatCompletionMessageParam[] =
-            [];
+          const toolResults: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];
 
-          // Add assistant message with tool calls
           toolResults.push({
             role: "assistant",
             content: currentContent || null,
@@ -487,47 +402,36 @@ export async function POST(req: NextRequest) {
             })),
           });
 
-          // Execute each tool and add results
           for (const toolCall of toolCalls) {
             const args = JSON.parse(toolCall.arguments || "{}");
             const result = await executeTool(toolCall.name, args, sessionId);
-
-            toolResults.push({
-              role: "tool",
-              tool_call_id: toolCall.id,
-              content: JSON.stringify(result),
-            });
+            toolResults.push({ role: "tool", tool_call_id: toolCall.id, content: JSON.stringify(result) });
           }
 
-          // Continue conversation with tool results
-          const continuedMessages = [...allMessages, ...toolResults];
-
           const continuedResponse = await client.chat.completions.create({
-            model: "c1/anthropic/claude-sonnet-4/v-20251230",
-            messages: continuedMessages,
+            model: "c1/openai/gpt-5/v-20251230",
+            messages: [...messages, ...toolResults],
             tools,
             stream: true,
+            metadata: meta,
           });
 
-          // Stream the continued response
           for await (const chunk of continuedResponse) {
             const content = chunk.choices[0]?.delta?.content;
-            if (content) {
-              await writeToStream(content);
-            }
+            if (content) c1Response.writeContent(content);
           }
         }
       }
 
-      await writer.close();
+      c1Response.end();
     } catch (error) {
       console.error("Chat error:", error);
-      await writeToStream("Sorry, I encountered an error. Please try again.");
-      await writer.close();
+      c1Response.writeContent("Sorry, I encountered an error. Please try again.");
+      c1Response.end();
     }
   })();
 
-  return new NextResponse(stream.readable, {
-    headers: { "Content-Type": "text/plain; charset=utf-8" },
+  return new NextResponse(c1Response.responseStream, {
+    headers: { "Content-Type": "text/event-stream" },
   });
 }

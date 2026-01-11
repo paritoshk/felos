@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { C1Chat, ThemeProvider } from "@thesysai/genui-sdk";
+import { WalletPanel } from "@/components/WalletPanel";
 
 export default function Home() {
   const [mounted, setMounted] = useState(false);
@@ -29,12 +30,13 @@ export default function Home() {
         containerFills: "#111827",
       }}
     >
-      <div className="h-screen">
+      <div className="h-screen bg-[#030712]">
         <C1Chat
           formFactor="full-page"
           apiUrl="/api/chat"
           agentName="Felous AI"
         />
+        <WalletPanel />
       </div>
     </ThemeProvider>
   );
