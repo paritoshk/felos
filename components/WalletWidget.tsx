@@ -22,7 +22,7 @@ export function WalletWidget() {
 
     useEffect(() => {
         fetchWallet();
-        const interval = setInterval(fetchWallet, 15000);
+        const interval = setInterval(fetchWallet, 10000);
         return () => clearInterval(interval);
     }, []);
 
@@ -55,13 +55,17 @@ export function WalletWidget() {
         }
     };
 
-    const balance = parseFloat(walletData?.balance?.usdc || "0");
+    // Calculate available balance (wallet balance minus spent)
+    const walletBalance = parseFloat(walletData?.balance?.usdc || "0");
+    const spent = parseFloat(walletData?.stats?.totalSpent?.replace("$", "") || "0");
+    const availableBalance = Math.max(0, walletBalance - spent);
+    const isLowBalance = availableBalance < 0.50;
 
     return (
-        <div className="space-y-4">
-            {/* Status Indicator */}
+        <div className="space-y-3">
+            {/* Status */}
             <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${walletData ? "bg-green-500 animate-pulse" : "bg-zinc-500"}`} />
+                <div className={`w-2 h-2 rounded-full ${walletData ? "bg-green-500" : "bg-zinc-500"}`} />
                 <span className="text-xs text-zinc-400">
                     {walletData ? "Connected" : "Connecting..."}
                 </span>
@@ -70,39 +74,60 @@ export function WalletWidget() {
                 </span>
             </div>
 
-            {/* Balance Card */}
-            <div className="bg-gradient-to-br from-blue-900/30 to-purple-900/30 rounded-xl p-4 border border-zinc-700/50">
+            {/* Available Balance (after spending) */}
+            <div className={`rounded-xl p-4 border ${isLowBalance ? "bg-red-900/20 border-red-800/50" : "bg-gradient-to-br from-blue-900/30 to-purple-900/30 border-zinc-700/50"}`}>
                 <div className="text-xs text-zinc-500 mb-1">Available Balance</div>
                 <div className="flex items-baseline gap-2">
-                    <span className="text-3xl font-mono font-bold text-white">${balance.toFixed(2)}</span>
+                    <span className={`text-3xl font-mono font-bold ${isLowBalance ? "text-red-400" : "text-white"}`}>
+                        ${availableBalance.toFixed(2)}
+                    </span>
                     <span className="text-xs text-zinc-500">USDC</span>
                 </div>
                 {walletData?.balance?.eth && (
-                    <div className="text-xs text-zinc-500 mt-2">
-                        {parseFloat(walletData.balance.eth).toFixed(6)} ETH
+                    <div className="text-xs text-zinc-500 mt-1">
+                        {parseFloat(walletData.balance.eth).toFixed(6)} ETH (gas)
                     </div>
                 )}
             </div>
 
-            {/* Stats */}
-            <div className="bg-zinc-800/50 rounded-lg p-3">
-                <div className="flex items-center justify-between">
-                    <span className="text-xs text-zinc-500">Session Spent</span>
-                    <span className="text-sm font-mono text-white">{walletData?.stats?.totalSpent || "$0.00"}</span>
+            {/* Spending Stats */}
+            <div className="bg-zinc-800/50 rounded-lg p-3 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                    <span className="text-zinc-500">Wallet Balance</span>
+                    <span className="text-zinc-400 font-mono">${walletBalance.toFixed(2)}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                    <span className="text-zinc-500">Session Spent</span>
+                    <span className="text-orange-400 font-mono">-${spent.toFixed(2)}</span>
+                </div>
+                <div className="border-t border-zinc-700 pt-2 flex items-center justify-between text-xs">
+                    <span className="text-zinc-400">Available</span>
+                    <span className={`font-mono font-medium ${isLowBalance ? "text-red-400" : "text-green-400"}`}>
+                        ${availableBalance.toFixed(2)}
+                    </span>
                 </div>
             </div>
+
+            {/* Low balance warning */}
+            {isLowBalance && (
+                <div className="text-xs text-red-400 bg-red-900/20 rounded-lg p-2 text-center">
+                    Low balance - add funds to continue
+                </div>
+            )}
 
             {/* Fund Button */}
             <button
                 onClick={handleFund}
                 disabled={fundingStatus === "funding"}
-                className={`w-full py-3 text-sm font-medium rounded-lg transition-all ${
+                className={`w-full py-2.5 text-sm font-medium rounded-lg transition-all ${
                     fundingStatus === "success"
                         ? "bg-green-600 text-white"
                         : fundingStatus === "error"
                         ? "bg-red-600/50 text-red-200"
                         : fundingStatus === "funding"
                         ? "bg-zinc-700 text-zinc-400"
+                        : isLowBalance
+                        ? "bg-orange-600 hover:bg-orange-500 text-white"
                         : "bg-blue-600 hover:bg-blue-500 text-white"
                 }`}
             >
@@ -115,14 +140,11 @@ export function WalletWidget() {
                         Requesting...
                     </span>
                 ) : fundingStatus === "success" ? (
-                    <span className="flex items-center justify-center gap-2">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                        Funds Incoming!
-                    </span>
+                    "Funds Incoming!"
                 ) : fundingStatus === "error" ? (
-                    "Rate Limited - Try Later"
+                    "Rate Limited"
+                ) : isLowBalance ? (
+                    "Add Funds Now"
                 ) : (
                     "Add Testnet Funds"
                 )}
@@ -130,18 +152,13 @@ export function WalletWidget() {
 
             {/* Wallet Address */}
             {walletData?.wallet?.address && (
-                <div className="pt-2 border-t border-zinc-800">
-                    <div className="text-xs text-zinc-600 mb-1">Wallet Address</div>
-                    <button
-                        onClick={() => {
-                            navigator.clipboard.writeText(walletData.wallet.address);
-                        }}
-                        className="w-full text-[11px] text-zinc-500 font-mono break-all hover:text-zinc-300 transition-colors text-left leading-relaxed"
-                        title="Click to copy"
-                    >
-                        {walletData.wallet.address}
-                    </button>
-                </div>
+                <button
+                    onClick={() => navigator.clipboard.writeText(walletData.wallet.address)}
+                    className="w-full text-[10px] text-zinc-600 font-mono truncate hover:text-zinc-400 transition-colors"
+                    title="Click to copy"
+                >
+                    {walletData.wallet.address}
+                </button>
             )}
         </div>
     );
