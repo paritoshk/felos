@@ -190,116 +190,134 @@ async function generateAdCopy(
 async function generateAdImage(prompt: string, sessionId: string) {
   const startTime = Date.now();
   const API_KEY = process.env.FIREWORKS_API_KEY;
-  const BASE_URL = "https://api.fireworks.ai/inference/v1/workflows/accounts/fireworks/models/flux-kontext-pro";
-
+  
+  // Use the workflow endpoint for FLUX Kontext Pro
+  const WORKFLOW_URL = "https://api.fireworks.ai/inference/v1/workflows/accounts/fireworks/models/flux-kontext-pro/text_to_image";
+  
   try {
-    // Step 1: Submit request
-    const submitResponse = await fetch(BASE_URL, {
+    // Step 1: Submit the generation request
+    console.log("Submitting image generation request...");
+    const submitResponse = await fetch(WORKFLOW_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Accept: "application/json",
-        Authorization: `Bearer ${API_KEY}`,
+        "Accept": "application/json",
+        "Authorization": `Bearer ${API_KEY}`,
       },
-      body: JSON.stringify({
+      body: JSON.stringify({ 
         prompt: `Professional advertisement: ${prompt}. Clean, modern, high-quality product photography style.`,
+        width: 1024,
+        height: 1024,
       }),
     });
 
     if (!submitResponse.ok) {
       const errorText = await submitResponse.text();
-      console.error("FLUX API submission error:", errorText);
-      return { success: false, error: "Failed to submit image generation request" };
+      console.error("Submit error:", errorText);
+      return { success: false, error: errorText };
     }
 
     const submitResult = await submitResponse.json();
-    const requestId = submitResult.request_id;
-
+    const requestId = submitResult.id || submitResult.request_id;
+    
     if (!requestId) {
-      console.error("No request_id returned:", submitResult);
-      return { success: false, error: "No request ID returned from API" };
+      console.error("No request_id in response:", submitResult);
+      // Check if image is returned directly
+      if (submitResult.output?.url || submitResult.data?.[0]?.url) {
+        const imageUrl = submitResult.output?.url || submitResult.data[0].url;
+        const durationMs = Date.now() - startTime;
+        
+        // Log to MongoDB
+        try {
+          const db = await connectToDatabase();
+          await db.collection("transactions").insertOne({
+            sessionId,
+            service: "flux-kontext-pro",
+            amount: X402_COSTS.image,
+            durationMs,
+            timestamp: new Date(),
+          });
+        } catch (e) {
+          console.error("MongoDB error:", e);
+        }
+        
+        return { success: true, imageUrl, cost: X402_COSTS.image, durationMs };
+      }
+      return { success: false, error: "No request_id returned" };
     }
 
-    // Step 2: Poll for result (max 60 attempts, 1 sec apart)
-    let imageUrl: string | null = null;
-    for (let attempt = 0; attempt < 60; attempt++) {
-      await new Promise((r) => setTimeout(r, 1000));
+    console.log(`Request submitted with ID: ${requestId}`);
 
-      const pollResponse = await fetch(`${BASE_URL}/get_result`, {
+    // Step 2: Poll for result
+    const POLL_URL = `${WORKFLOW_URL}/get_result`;
+    
+    for (let attempt = 0; attempt < 60; attempt++) {
+      await new Promise(r => setTimeout(r, 1000));
+      
+      console.log(`Polling attempt ${attempt + 1}/60...`);
+      
+      const pollResponse = await fetch(POLL_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Accept: "application/json",
-          Authorization: `Bearer ${API_KEY}`,
+          "Accept": "application/json",
+          "Authorization": `Bearer ${API_KEY}`,
         },
         body: JSON.stringify({ id: requestId }),
       });
 
+      let pollResult;
       if (!pollResponse.ok) {
-        console.error(`Poll attempt ${attempt + 1} failed:`, await pollResponse.text());
+        const errorText = await pollResponse.text();
+        console.error(`Poll error (attempt ${attempt + 1}):`, errorText);
+        if (errorText.includes("Task not found") && attempt < 10) {
+          // Sometimes the task isn't immediately available, wait a bit more
+          continue;
+        }
+        // If it's not a "Task not found" error, skip this attempt
         continue;
       }
+      
+      pollResult = await pollResponse.json();
+      console.log(`Poll status: ${pollResult.status}`);
 
-      const pollResult = await pollResponse.json();
-      const status = pollResult.status;
-
-      if (status === "Ready" || status === "Complete" || status === "Finished") {
-        const imageData = pollResult.result?.sample;
-
-        if (typeof imageData === "string") {
-          if (imageData.startsWith("http")) {
-            // Return URL directly (don't embed base64 to avoid token overflow)
-            imageUrl = imageData;
-            break;
-          } else if (imageData.startsWith("data:")) {
-            // Data URL - still too large, return placeholder
-            imageUrl = "https://placehold.co/1024x1024/1a1a2e/white?text=Image+Generated+(Base64+too+large)";
-            break;
-          } else {
-            // Likely base64 string - don't return full base64 (209k tokens > 200k limit)
-            // Return placeholder URL instead
-            imageUrl = "https://placehold.co/1024x1024/1a1a2e/white?text=Image+Generated+(Base64+too+large)";
-            break;
+      if (pollResult.status === "Ready" || pollResult.status === "Complete" || pollResult.status === "Finished") {
+        // Get image URL from result
+        const imageUrl = pollResult.result?.sample || 
+                        pollResult.result?.url ||
+                        pollResult.output?.url ||
+                        pollResult.data?.[0]?.url;
+        
+        if (imageUrl) {
+          const durationMs = Date.now() - startTime;
+          
+          // Log to MongoDB
+          try {
+            const db = await connectToDatabase();
+            await db.collection("transactions").insertOne({
+              sessionId,
+              service: "flux-kontext-pro",
+              amount: X402_COSTS.image,
+              durationMs,
+              timestamp: new Date(),
+            });
+          } catch (e) {
+            console.error("MongoDB error:", e);
           }
+          
+          return { success: true, imageUrl, cost: X402_COSTS.image, durationMs };
         }
       }
 
-      if (status === "Failed" || status === "Error") {
+      if (pollResult.status === "Failed" || pollResult.status === "Error") {
         console.error("Generation failed:", pollResult);
-        return { success: false, error: pollResult.details || "Image generation failed" };
+        return { success: false, error: pollResult.error || "Generation failed" };
       }
-
-      console.log(`Polling attempt ${attempt + 1}/60, status: ${status}`);
     }
 
-    const durationMs = Date.now() - startTime;
-
-    if (!imageUrl) {
-      return { success: false, error: "Image generation timeout after 60 attempts" };
-    }
-
-    // Log transaction
-    try {
-      const db = await connectToDatabase();
-      await db.collection("transactions").insertOne({
-        sessionId,
-        service: "FLUX Kontext Pro",
-        amount: X402_COSTS.fluxKontextPro,
-        durationMs,
-        timestamp: new Date(),
-      });
-    } catch (e) {
-      console.error("MongoDB error:", e);
-    }
-
-    return {
-      success: true,
-      imageUrl,
-      cost: X402_COSTS.fluxKontextPro,
-      durationMs,
-    };
+    return { success: false, error: "Timeout waiting for image" };
   } catch (error) {
-    console.error("Error generating image:", error);
+    console.error("Image generation error:", error);
     return { success: false, error: String(error) };
   }
 }
