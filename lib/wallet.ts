@@ -9,21 +9,21 @@
 
 import { CdpClient } from "@coinbase/cdp-sdk";
 import { toAccount, privateKeyToAccount } from "viem/accounts";
-import { createPublicClient, http, formatUnits } from "viem";
+import { createPublicClient, http, formatUnits, getAddress, isAddress } from "viem";
 import { baseSepolia, base } from "viem/chains";
 import type { LocalAccount } from "viem";
 
 // CDP EVM Account type (inferred from SDK)
 type CdpEvmAccount = Awaited<ReturnType<CdpClient["evm"]["getOrCreateAccount"]>>;
 
-// USDC contract addresses
+// USDC contract addresses (checksummed)
 const USDC_ADDRESSES = {
     "eip155:84532": "0x036CbD53842c5426634e7929541eC2318f3dCF7e", // Base Sepolia
     "eip155:8453": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",  // Base Mainnet
 };
 
-// Demo mode fallback address (a real Base Sepolia address for display purposes)
-const DEMO_WALLET_ADDRESS = "0x742d35Cc6634C0532925a3b844Bc9e7595f5bE91";
+// Demo mode fallback - use zero address (won't have balance but valid for display)
+const DEMO_WALLET_ADDRESS = "0x0000000000000000000000000000000000000000";
 
 // Cached wallet state
 let cdpClient: CdpClient | null = null;
@@ -163,8 +163,16 @@ export async function getWalletSigner(): Promise<LocalAccount> {
  */
 export async function getWalletBalance(): Promise<{ usdc: string; eth: string; usdcRaw: bigint; ethRaw: bigint }> {
     try {
-        const address = await getWalletAddress();
+        const rawAddress = await getWalletAddress();
         const network = getNetworkConfig();
+
+        // Validate and checksum the address
+        if (!isAddress(rawAddress)) {
+            console.warn("[Wallet] Invalid address format:", rawAddress);
+            return { usdc: "0", eth: "0", usdcRaw: BigInt(0), ethRaw: BigInt(0) };
+        }
+
+        const address = getAddress(rawAddress); // Normalize to checksummed format
 
         const publicClient = createPublicClient({
             chain: network.chain,
@@ -172,15 +180,20 @@ export async function getWalletBalance(): Promise<{ usdc: string; eth: string; u
         });
 
         // Get ETH balance
-        const ethBalance = await publicClient.getBalance({ address: address as `0x${string}` });
+        let ethBalance = BigInt(0);
+        try {
+            ethBalance = await publicClient.getBalance({ address });
+        } catch (e) {
+            console.warn("[Wallet] Failed to fetch ETH balance:", e);
+        }
 
         // Get USDC balance (ERC20)
-        const usdcAddress = USDC_ADDRESSES[network.chainId];
+        const usdcAddress = getAddress(USDC_ADDRESSES[network.chainId]);
         let usdcBalance = BigInt(0);
 
         try {
             const data = await publicClient.readContract({
-                address: usdcAddress as `0x${string}`,
+                address: usdcAddress,
                 abi: [
                     {
                         name: "balanceOf",
@@ -191,11 +204,11 @@ export async function getWalletBalance(): Promise<{ usdc: string; eth: string; u
                     },
                 ],
                 functionName: "balanceOf",
-                args: [address as `0x${string}`],
+                args: [address],
             });
             usdcBalance = data as bigint;
         } catch (e) {
-            console.warn("Failed to fetch USDC balance:", e);
+            console.warn("[Wallet] Failed to fetch USDC balance:", e);
         }
 
         return {
@@ -204,8 +217,9 @@ export async function getWalletBalance(): Promise<{ usdc: string; eth: string; u
             usdcRaw: usdcBalance,
             ethRaw: ethBalance,
         };
-    } catch {
-        return { usdc: "0.00", eth: "0.00", usdcRaw: BigInt(0), ethRaw: BigInt(0) };
+    } catch (e) {
+        console.warn("[Wallet] Balance fetch error:", e);
+        return { usdc: "0", eth: "0", usdcRaw: BigInt(0), ethRaw: BigInt(0) };
     }
 }
 
