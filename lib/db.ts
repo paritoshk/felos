@@ -20,7 +20,29 @@ export const SUBSCRIPTION_COSTS = {
 
 export const X402_COSTS = {
   scrape: 0.01,
+  adCopy: 0.02,
   llm: 0.02,
-  image: 0.06,
+  fluxSchnell: 0.03,
+  fluxDev: 0.06,
+  fluxKontextPro: 0.04,
+  image: 0.04, // Using Kontext Pro
   total: 0.09,
 };
+
+// Transaction logging helper
+export async function logTransaction(
+  service: string,
+  amount: number,
+  threadId: string,
+  metadata?: Record<string, any>
+) {
+  const db = await connectToDatabase();
+  await db.collection("transactions").insertOne({
+    sessionId: threadId,
+    service,
+    amount,
+    durationMs: metadata?.durationMs || 0,
+    timestamp: new Date(),
+    ...metadata,
+  });
+}
