@@ -18,7 +18,7 @@ export function deleteImage(key: string): boolean {
 
 export function clearSession(sessionId: string): void {
   const keysToDelete: string[] = [];
-  for (const key of imageStore.keys()) {
+  for (const key of Array.from(imageStore.keys())) {
     if (key.startsWith(`${sessionId}:`)) {
       keysToDelete.push(key);
     }
