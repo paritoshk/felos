@@ -19,14 +19,14 @@ export const SUBSCRIPTION_COSTS = {
 };
 
 export const X402_COSTS = {
-  scrape: 0.01,
-  adCopy: 0.02,
-  llm: 0.02,
-  fluxSchnell: 0.03,
-  fluxDev: 0.06,
-  fluxKontextPro: 0.04,
-  image: 0.04, // Using Kontext Pro
-  total: 0.09,
+  scrape: 0.15,      // Web scraping
+  adCopy: 0.25,      // LLM ad copy generation
+  llm: 0.25,         // General LLM calls
+  fluxSchnell: 0.20,
+  fluxDev: 0.30,
+  fluxKontextPro: 0.35,
+  image: 0.35,       // Image generation
+  total: 0.75,       // Typical ad generation total
 };
 
 // Transaction logging helper

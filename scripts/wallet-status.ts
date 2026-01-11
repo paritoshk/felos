@@ -14,7 +14,7 @@ import "dotenv/config";
 import { logTreasuryStatus, getTreasuryStatus, requestFaucet } from "../lib/wallet";
 
 async function main() {
-    console.log("\n💰 Felous x402 Wallet Status\n");
+    console.log("\n💰 felos x402 Wallet Status\n");
     console.log("=".repeat(60));
 
     try {

@@ -96,7 +96,7 @@ export async function getCdpAccount(): Promise<CdpEvmAccount> {
     if (cdpAccount) return cdpAccount;
 
     const client = await initCdpClient();
-    cdpAccount = await client.evm.getOrCreateAccount({ name: "felous-x402-wallet" });
+    cdpAccount = await client.evm.getOrCreateAccount({ name: "felos-x402-wallet" });
     walletAddress = cdpAccount.address;
     console.log(`[Wallet] CDP Wallet initialized: ${walletAddress}`);
     return cdpAccount;
