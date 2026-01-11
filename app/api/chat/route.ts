@@ -4,6 +4,8 @@ import { systemPrompt } from "@/lib/systemPrompt";
 import { connectToDatabase, X402_COSTS, SUBSCRIPTION_COSTS } from "@/lib/db";
 import { setImage } from "@/lib/imageStore";
 
+export const dynamic = "force-dynamic";
+
 // Initialize Thesys C1 client
 const client = new OpenAI({
   apiKey: process.env.THESYS_API_KEY || "",
@@ -191,7 +193,7 @@ async function generateAdCopy(
 async function generateAdImage(prompt: string, sessionId: string) {
   const startTime = Date.now();
   const API_KEY = process.env.FIREWORKS_API_KEY;
-  
+
   try {
     // Use SDXL for reliable image generation
     const response = await fetch(
