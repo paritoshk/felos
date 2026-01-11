@@ -77,7 +77,7 @@ async function generateAdCopy(productName: string, productDescription: string, s
         Authorization: `Bearer ${process.env.FIREWORKS_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "accounts/fireworks/models/llama-v3p1-70b-instruct",
+        model: "accounts/fireworks/models/llama-v3p3-70b-instruct",
         messages: [
           {
             role: "system",

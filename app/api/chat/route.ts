@@ -122,7 +122,7 @@ async function generateAdCopy(
     ].filter(Boolean).join("\n");
 
     const response = await fireworksClient.chat.completions.create({
-      model: "accounts/fireworks/models/llama-v3p1-70b-instruct",
+      model: "accounts/fireworks/models/llama-v3p3-70b-instruct",
       messages: [
         {
           role: "system",
@@ -280,8 +280,87 @@ async function getSpendingReport(sessionId: string) {
   }
 }
 
+// Planning tool - creates execution plan before running paid tools
+interface PlanStep {
+  stepNumber: number;
+  action: string;
+  tool: string;
+  cost: number;
+  description: string;
+}
+
+interface ExecutionPlan {
+  task: string;
+  steps: PlanStep[];
+  totalCost: number;
+  estimatedTimeSeconds: number;
+  savingsVsSubscription: string;
+}
+
+async function createExecutionPlan(
+  task: string,
+  steps: PlanStep[],
+  totalCost: number,
+  estimatedTimeSeconds: number
+): Promise<{ success: true; plan: ExecutionPlan }> {
+  const savingsPercent = ((199 - totalCost) / 199 * 100).toFixed(1);
+  const savingsVsSubscription = `$${(199 - totalCost).toFixed(2)} saved (${savingsPercent}% less than $199/mo subscription)`;
+
+  return {
+    success: true,
+    plan: {
+      task,
+      steps,
+      totalCost,
+      estimatedTimeSeconds,
+      savingsVsSubscription,
+    },
+  };
+}
+
 // Tool definitions for OpenAI-compatible API
 const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
+  {
+    type: "function",
+    function: {
+      name: "createExecutionPlan",
+      description:
+        "MUST be called FIRST before any paid tool. Creates an execution plan showing all steps and costs. Call this before scrapeProduct, generateAdCopy, or generateAdImage.",
+      parameters: {
+        type: "object",
+        properties: {
+          task: {
+            type: "string",
+            description: "Summary of what will be done for the user",
+          },
+          steps: {
+            type: "array",
+            description: "List of steps to execute",
+            items: {
+              type: "object",
+              properties: {
+                stepNumber: { type: "number", description: "Step number (1, 2, 3...)" },
+                action: { type: "string", description: "What this step does" },
+                tool: { type: "string", description: "Tool name to use" },
+                cost: { type: "number", description: "Cost in USD (e.g., 0.01, 0.02, 0.06)" },
+                description: { type: "string", description: "Brief description of the step" },
+              },
+              required: ["stepNumber", "action", "tool", "cost", "description"],
+            },
+          },
+          totalCost: {
+            type: "number",
+            description: "Total cost in USD for all steps",
+          },
+          estimatedTimeSeconds: {
+            type: "number",
+            description: "Estimated time to complete in seconds",
+          },
+        },
+        required: ["task", "steps", "totalCost", "estimatedTimeSeconds"],
+      },
+    },
+  },
   {
     type: "function",
     function: {
@@ -358,6 +437,13 @@ async function executeTool(
   sessionId: string
 ) {
   switch (name) {
+    case "createExecutionPlan":
+      return await createExecutionPlan(
+        args.task as string,
+        args.steps as PlanStep[],
+        args.totalCost as number,
+        args.estimatedTimeSeconds as number
+      );
     case "scrapeProduct":
       return await scrapeProduct(args.url as string, sessionId);
     case "generateAdCopy":
@@ -426,97 +512,95 @@ export async function POST(req: NextRequest) {
   // Process in background
   (async () => {
     try {
-      // Initial completion with tools
-      let response = await client.chat.completions.create({
-        model: "c1/anthropic/claude-sonnet-4/v-20251230",
-        messages: allMessages,
-        tools,
-        stream: true,
-      });
+      let currentMessages = [...allMessages];
+      let maxRounds = 10; // Prevent infinite loops
+      let round = 0;
 
-      let toolCalls: {
-        id: string;
-        name: string;
-        arguments: string;
-      }[] = [];
-      let currentContent = "";
+      while (round < maxRounds) {
+        round++;
 
-      // Process the stream
-      for await (const chunk of response) {
-        const delta = chunk.choices[0]?.delta;
+        const response = await client.chat.completions.create({
+          model: "c1/anthropic/claude-sonnet-4/v-20251230",
+          messages: currentMessages,
+          tools,
+          stream: true,
+        });
 
-        // Handle content streaming
-        if (delta?.content) {
-          currentContent += delta.content;
-          await writeToStream(delta.content);
-        }
+        let toolCalls: {
+          id: string;
+          name: string;
+          arguments: string;
+        }[] = [];
+        let currentContent = "";
+        let hasToolCalls = false;
 
-        // Handle tool calls
-        if (delta?.tool_calls) {
-          for (const toolCall of delta.tool_calls) {
-            const index = toolCall.index;
-            if (!toolCalls[index]) {
-              toolCalls[index] = {
-                id: toolCall.id || "",
-                name: toolCall.function?.name || "",
-                arguments: "",
-              };
-            }
-            if (toolCall.id) toolCalls[index].id = toolCall.id;
-            if (toolCall.function?.name)
-              toolCalls[index].name = toolCall.function.name;
-            if (toolCall.function?.arguments)
-              toolCalls[index].arguments += toolCall.function.arguments;
-          }
-        }
+        // Process the stream
+        for await (const chunk of response) {
+          const delta = chunk.choices[0]?.delta;
 
-        // Check if we're done with this response
-        if (chunk.choices[0]?.finish_reason === "tool_calls" && toolCalls.length > 0) {
-          // Execute all tool calls
-          const toolResults: OpenAI.Chat.Completions.ChatCompletionMessageParam[] =
-            [];
-
-          // Add assistant message with tool calls
-          toolResults.push({
-            role: "assistant",
-            content: currentContent || null,
-            tool_calls: toolCalls.map((tc) => ({
-              id: tc.id,
-              type: "function" as const,
-              function: { name: tc.name, arguments: tc.arguments },
-            })),
-          });
-
-          // Execute each tool and add results
-          for (const toolCall of toolCalls) {
-            const args = JSON.parse(toolCall.arguments || "{}");
-            const result = await executeTool(toolCall.name, args, sessionId);
-
-            toolResults.push({
-              role: "tool",
-              tool_call_id: toolCall.id,
-              content: JSON.stringify(result),
-            });
+          // Handle content streaming
+          if (delta?.content) {
+            currentContent += delta.content;
+            await writeToStream(delta.content);
           }
 
-          // Continue conversation with tool results
-          const continuedMessages = [...allMessages, ...toolResults];
-
-          const continuedResponse = await client.chat.completions.create({
-            model: "c1/anthropic/claude-sonnet-4/v-20251230",
-            messages: continuedMessages,
-            tools,
-            stream: true,
-          });
-
-          // Stream the continued response
-          for await (const chunk of continuedResponse) {
-            const content = chunk.choices[0]?.delta?.content;
-            if (content) {
-              await writeToStream(content);
+          // Handle tool calls
+          if (delta?.tool_calls) {
+            hasToolCalls = true;
+            for (const toolCall of delta.tool_calls) {
+              const index = toolCall.index;
+              if (!toolCalls[index]) {
+                toolCalls[index] = {
+                  id: toolCall.id || "",
+                  name: toolCall.function?.name || "",
+                  arguments: "",
+                };
+              }
+              if (toolCall.id) toolCalls[index].id = toolCall.id;
+              if (toolCall.function?.name)
+                toolCalls[index].name = toolCall.function.name;
+              if (toolCall.function?.arguments)
+                toolCalls[index].arguments += toolCall.function.arguments;
             }
           }
+
+          // Check finish reason
+          if (chunk.choices[0]?.finish_reason === "stop") {
+            // Model is done, exit loop
+            break;
+          }
         }
+
+        // If no tool calls, we're done
+        if (!hasToolCalls || toolCalls.length === 0) {
+          break;
+        }
+
+        // Execute tool calls and continue
+        // Add assistant message with tool calls
+        currentMessages.push({
+          role: "assistant",
+          content: currentContent || null,
+          tool_calls: toolCalls.map((tc) => ({
+            id: tc.id,
+            type: "function" as const,
+            function: { name: tc.name, arguments: tc.arguments },
+          })),
+        });
+
+        // Execute each tool and add results
+        for (const toolCall of toolCalls) {
+          const args = JSON.parse(toolCall.arguments || "{}");
+          const result = await executeTool(toolCall.name, args, sessionId);
+
+          currentMessages.push({
+            role: "tool",
+            tool_call_id: toolCall.id,
+            content: JSON.stringify(result),
+          });
+        }
+
+        // Loop will continue with updated messages
       }
 
       await writer.close();
