@@ -1,8 +1,8 @@
-# AdGen Agent ⚡
+# felos ⚡
 
-**Chat-based AI marketing agent with x402 micropayments**
+**AI-powered marketing agent with x402 micropayments**
 
-Built with **Thesys C1** (Generative UI) + **x402** + **MongoDB**
+Built with **Thesys C1** (Generative UI) + **Coinbase x402** + **MongoDB Atlas** + **Fireworks AI**
 
 ## Architecture
 
@@ -78,14 +78,14 @@ lib/
 
 ## The Money Story 💰
 
-**Without AdGen (DIY subscriptions):**
+**Without felos (DIY subscriptions):**
 - Firecrawl Pro: $99/mo
 - Fireworks: $50/mo
 - Image Gen: $20/mo
 - Copy AI: $30/mo
 - **Total: $199/month**
 
-**With AdGen (x402):**
+**With felos (x402):**
 - Complete ad: **$0.09**
 - **Savings: 99.95%**
 
@@ -93,7 +93,7 @@ lib/
 
 | Time | Action | Script |
 |------|--------|--------|
-| 0:00 | Show chat | "This is AdGen Agent — an AI marketer that pays for its own tools" |
+| 0:00 | Show chat | "This is felos — an AI agent that pays for its own tools via x402" |
 | 0:15 | Type URL | "Let's create ads for this product..." |
 | 0:25 | Watch scrape | "1 cent to Firecrawl via x402" |
 | 0:35 | See ad copy | "2 cents to Fireworks for 3 variations" |
