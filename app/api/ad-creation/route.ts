@@ -41,12 +41,12 @@ const SYSTEM_PROMPT = `You are Felous AI, an ad creation assistant that generate
 ━━━━━━━━━━━━━━━━━━━━━
 **Task:** [What you'll do]
 **Steps:**
-1. 🖼️ Hero Product Shot - $0.06
-2. 🖼️ Lifestyle Context - $0.06
-3. 🖼️ Bold & Dynamic - $0.06
-4. 🖼️ Minimal Modern - $0.06
-5. 🖼️ Luxury Premium - $0.06
-**Total Cost:** $0.30
+1. 🖼️ Hero Product Shot - $0.04
+2. 🖼️ Lifestyle Context - $0.04
+3. 🖼️ Bold & Dynamic - $0.04
+4. 🖼️ Minimal Modern - $0.04
+5. 🖼️ Luxury Premium - $0.04
+**Total Cost:** $0.20
 ━━━━━━━━━━━━━━━━━━━━━
 
 Then call the generateAdImages tool.
@@ -63,45 +63,100 @@ Then call the generateAdImages tool.
 - ALWAYS include cost breakdown
 - Be enthusiastic about the creative possibilities!`;
 
-// FLUX image generation function
+// FLUX Kontext Pro image generation function (workflow-based API)
 async function generateFluxImage(params: {
   prompt: string;
   width: number;
   height: number;
-  model: "schnell" | "dev";
 }): Promise<string | null> {
-  const modelPath =
-    params.model === "schnell"
-      ? "accounts/fireworks/models/flux-1-schnell-fp8"
-      : "accounts/fireworks/models/flux-1-dev-fp8";
+  const workflowUrl = "https://api.fireworks.ai/inference/v1/workflows/accounts/fireworks/models/flux-kontext-pro";
+  const apiKey = process.env.FIREWORKS_API_KEY;
 
   try {
-    const response = await fetch(
-      `https://api.fireworks.ai/inference/v1/image_generation/${modelPath}`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${process.env.FIREWORKS_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          prompt: params.prompt,
-          width: params.width,
-          height: params.height,
-          steps: params.model === "schnell" ? 4 : 25,
-          cfg_scale: params.model === "schnell" ? 7.5 : 3.5,
-        }),
-      }
-    );
+    // Step 1: Submit the generation request
+    const submitResponse = await fetch(workflowUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        prompt: params.prompt,
+        width: params.width,
+        height: params.height,
+      }),
+    });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("FLUX API error:", errorText);
+    if (!submitResponse.ok) {
+      const errorText = await submitResponse.text();
+      console.error("FLUX API submission error:", errorText);
       return null;
     }
 
-    const data = await response.json();
-    return data.output?.[0]?.url || data.data?.[0]?.url || null;
+    const submitData = await submitResponse.json();
+    const requestId = submitData.request_id;
+
+    if (!requestId) {
+      console.error("No request ID returned:", submitData);
+      return null;
+    }
+
+    // Step 2: Poll for the result
+    const resultEndpoint = `${workflowUrl}/get_result`;
+    const maxAttempts = 60;
+    const pollInterval = 1000; // 1 second
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, pollInterval));
+
+      const pollResponse = await fetch(resultEndpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({ id: requestId }),
+      });
+
+      if (!pollResponse.ok) {
+        console.error(`Poll attempt ${attempt + 1} failed:`, await pollResponse.text());
+        continue;
+      }
+
+      const pollResult = await pollResponse.json();
+      const status = pollResult.status;
+
+      if (status === "Ready" || status === "Complete" || status === "Finished") {
+        const imageData = pollResult.result?.sample;
+
+        if (typeof imageData === "string") {
+          // URL or base64
+          if (imageData.startsWith("http")) {
+            return imageData; // Return URL directly
+          } else if (imageData.startsWith("data:")) {
+            return imageData; // Return data URL
+          } else {
+            // Assume base64, convert to data URL
+            return `data:image/jpeg;base64,${imageData}`;
+          }
+        } else if (imageData) {
+          // Already processed
+          return typeof imageData === "string" ? imageData : null;
+        }
+      }
+
+      if (status === "Failed" || status === "Error") {
+        console.error("Generation failed:", pollResult.details || "Unknown error");
+        return null;
+      }
+
+      // Continue polling if status is "Processing" or similar
+    }
+
+    console.error("Polling timeout after", maxAttempts, "attempts");
+    return null;
   } catch (error) {
     console.error("Error generating FLUX image:", error);
     return null;
@@ -183,22 +238,23 @@ async function generateAdImages(params: {
     premium: "Explore",
   };
 
-  for (const style of styles) {
+  // Generate all images in parallel for better performance
+  const imagePromises = styles.map(async (style) => {
     const headline = styleHeadlines[style] || `Get ${productName}`;
     const cta = styleCTAs[tone] || "Learn More";
     const prompt = buildPrompt(product, style, tone, headline, cta);
+    const imageStartTime = Date.now();
 
     const imageUrl = await generateFluxImage({
       prompt,
       width: dimensions.width,
       height: dimensions.height,
-      model: "dev", // Use dev for higher quality
     });
 
     if (imageUrl) {
-      // Log transaction
-      await logTransaction("FLUX.1 dev", X402_COSTS.fluxDev, threadId, {
-        durationMs: Date.now() - startTime,
+      // Log transaction for each image
+      await logTransaction("FLUX Kontext Pro", X402_COSTS.fluxKontextPro, threadId, {
+        durationMs: Date.now() - imageStartTime,
         productName,
         style,
         headline,
@@ -206,16 +262,20 @@ async function generateAdImages(params: {
       });
     }
 
-    images.push({
+    return {
       imageUrl: imageUrl || "https://placehold.co/1024x1024/1a1a2e/white?text=Ad+Image",
       style: style.replace(/-/g, " ").replace(/\b\w/g, (l) => l.toUpperCase()),
       headline,
       cta,
       description: STYLE_CONFIGS[style],
-    });
-  }
+    };
+  });
 
-  const totalCost = X402_COSTS.fluxDev * images.length;
+  // Wait for all images to be generated
+  const generatedImages = await Promise.all(imagePromises);
+  images.push(...generatedImages);
+
+  const totalCost = X402_COSTS.fluxKontextPro * images.length;
 
   return {
     success: true,
@@ -231,7 +291,7 @@ const tools = [
     function: {
       name: "generateAdImages",
       description:
-        "Generate ad images using FLUX.1. Costs $0.06 per image. Always generate 5 variations with different styles: hero-product, lifestyle-context, bold-dynamic, minimal-modern, luxury-premium.",
+        "Generate ad images using FLUX Kontext Pro. Costs $0.04 per image. Always generate 5 variations with different styles: hero-product, lifestyle-context, bold-dynamic, minimal-modern, luxury-premium.",
       parameters: {
         type: "object",
         properties: {
@@ -301,14 +361,14 @@ export async function POST(request: NextRequest) {
         // First, show execution plan
         const executionPlan = `📋 **Execution Plan**
 ━━━━━━━━━━━━━━━━━━━━━
-**Task:** Generate 5 professional ad variations using FLUX.1
+**Task:** Generate 5 professional ad variations using FLUX Kontext Pro
 **Steps:**
-1. 🖼️ Hero Product Shot - $0.06
-2. 🖼️ Lifestyle Context - $0.06
-3. 🖼️ Bold & Dynamic - $0.06
-4. 🖼️ Minimal Modern - $0.06
-5. 🖼️ Luxury Premium - $0.06
-**Total Cost:** $0.30
+1. 🖼️ Hero Product Shot - $0.04
+2. 🖼️ Lifestyle Context - $0.04
+3. 🖼️ Bold & Dynamic - $0.04
+4. 🖼️ Minimal Modern - $0.04
+5. 🖼️ Luxury Premium - $0.04
+**Total Cost:** $0.20
 ━━━━━━━━━━━━━━━━━━━━━
 
 Generating images now...\n\n`;

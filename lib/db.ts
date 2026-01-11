@@ -24,7 +24,8 @@ export const X402_COSTS = {
   llm: 0.02,
   fluxSchnell: 0.03,
   fluxDev: 0.06,
-  image: 0.06,
+  fluxKontextPro: 0.04,
+  image: 0.04, // Using Kontext Pro
   total: 0.09,
 };
 

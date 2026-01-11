@@ -189,42 +189,102 @@ async function generateAdCopy(
 
 async function generateAdImage(prompt: string, sessionId: string) {
   const startTime = Date.now();
+  const API_KEY = process.env.FIREWORKS_API_KEY;
+  const BASE_URL = "https://api.fireworks.ai/inference/v1/workflows/accounts/fireworks/models/flux-kontext-pro";
 
   try {
-    const response = await fetch(
-      "https://api.fireworks.ai/inference/v1/image_generation/accounts/fireworks/models/flux-1-schnell-fp8",
-      {
+    // Step 1: Submit request
+    const submitResponse = await fetch(BASE_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        Authorization: `Bearer ${API_KEY}`,
+      },
+      body: JSON.stringify({
+        prompt: `Professional advertisement: ${prompt}. Clean, modern, high-quality product photography style.`,
+      }),
+    });
+
+    if (!submitResponse.ok) {
+      const errorText = await submitResponse.text();
+      console.error("FLUX API submission error:", errorText);
+      return { success: false, error: "Failed to submit image generation request" };
+    }
+
+    const submitResult = await submitResponse.json();
+    const requestId = submitResult.request_id;
+
+    if (!requestId) {
+      console.error("No request_id returned:", submitResult);
+      return { success: false, error: "No request ID returned from API" };
+    }
+
+    // Step 2: Poll for result (max 60 attempts, 1 sec apart)
+    let imageUrl: string | null = null;
+    for (let attempt = 0; attempt < 60; attempt++) {
+      await new Promise((r) => setTimeout(r, 1000));
+
+      const pollResponse = await fetch(`${BASE_URL}/get_result`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.FIREWORKS_API_KEY}`,
+          Accept: "application/json",
+          Authorization: `Bearer ${API_KEY}`,
         },
-        body: JSON.stringify({
-          prompt: `Professional advertisement: ${prompt}. Clean, modern, high-quality product photography style.`,
-          cfg_scale: 7,
-          height: 1024,
-          width: 1024,
-          steps: 4,
-        }),
+        body: JSON.stringify({ id: requestId }),
+      });
+
+      if (!pollResponse.ok) {
+        console.error(`Poll attempt ${attempt + 1} failed:`, await pollResponse.text());
+        continue;
       }
-    );
 
-    const durationMs = Date.now() - startTime;
-    let imageUrl = "https://placehold.co/512x512/1a1a2e/white?text=Ad+Image";
+      const pollResult = await pollResponse.json();
+      const status = pollResult.status;
 
-    if (response.ok) {
-      const data = await response.json();
-      if (data.data?.[0]?.url) imageUrl = data.data[0].url;
-      else if (data.data?.[0]?.b64_json)
-        imageUrl = `data:image/png;base64,${data.data[0].b64_json}`;
+      if (status === "Ready" || status === "Complete" || status === "Finished") {
+        const imageData = pollResult.result?.sample;
+
+        if (typeof imageData === "string") {
+          if (imageData.startsWith("http")) {
+            // Return URL directly (don't embed base64 to avoid token overflow)
+            imageUrl = imageData;
+            break;
+          } else if (imageData.startsWith("data:")) {
+            // Data URL - still too large, return placeholder
+            imageUrl = "https://placehold.co/1024x1024/1a1a2e/white?text=Image+Generated+(Base64+too+large)";
+            break;
+          } else {
+            // Likely base64 string - don't return full base64 (209k tokens > 200k limit)
+            // Return placeholder URL instead
+            imageUrl = "https://placehold.co/1024x1024/1a1a2e/white?text=Image+Generated+(Base64+too+large)";
+            break;
+          }
+        }
+      }
+
+      if (status === "Failed" || status === "Error") {
+        console.error("Generation failed:", pollResult);
+        return { success: false, error: pollResult.details || "Image generation failed" };
+      }
+
+      console.log(`Polling attempt ${attempt + 1}/60, status: ${status}`);
     }
 
+    const durationMs = Date.now() - startTime;
+
+    if (!imageUrl) {
+      return { success: false, error: "Image generation timeout after 60 attempts" };
+    }
+
+    // Log transaction
     try {
       const db = await connectToDatabase();
       await db.collection("transactions").insertOne({
         sessionId,
-        service: "fireworks-flux",
-        amount: X402_COSTS.image,
+        service: "FLUX Kontext Pro",
+        amount: X402_COSTS.fluxKontextPro,
         durationMs,
         timestamp: new Date(),
       });
@@ -232,8 +292,14 @@ async function generateAdImage(prompt: string, sessionId: string) {
       console.error("MongoDB error:", e);
     }
 
-    return { success: true, imageUrl, cost: X402_COSTS.image, durationMs };
+    return {
+      success: true,
+      imageUrl,
+      cost: X402_COSTS.fluxKontextPro,
+      durationMs,
+    };
   } catch (error) {
+    console.error("Error generating image:", error);
     return { success: false, error: String(error) };
   }
 }
@@ -402,7 +468,7 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "generateAdImage",
-      description: "Generate an ad image using FLUX.1. Costs $0.06 via x402.",
+      description: "Generate an ad image using FLUX Kontext Pro. Costs $0.04 via x402.",
       parameters: {
         type: "object",
         properties: {
