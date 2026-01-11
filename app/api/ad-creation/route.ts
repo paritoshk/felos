@@ -33,7 +33,7 @@ const TONE_MODIFIERS = {
 };
 
 // System prompt with execution plan requirement
-const SYSTEM_PROMPT = `You are Felous AI, an ad creation assistant that generates professional advertisements using FLUX.1 image generation.
+const SYSTEM_PROMPT = `You are felos, an ad creation assistant that generates professional advertisements using FLUX.1 image generation.
 
 ## MANDATORY: Before any action, output an execution plan:
 

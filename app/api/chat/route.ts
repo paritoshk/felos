@@ -387,7 +387,7 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     function: {
       name: "scrapeProduct",
       description:
-        "Scrape a product URL to extract product info. Costs $0.01 via x402. Use when user provides a URL.",
+        "Scrape a product URL to extract product info. Costs $0.15 via x402. Use when user provides a URL.",
       parameters: {
         type: "object",
         properties: {
@@ -405,7 +405,7 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     function: {
       name: "generateAdCopy",
       description:
-        "Generate 3 ad copy variations (urgent, playful, premium). Costs $0.02 via x402.",
+        "Generate 3 ad copy variations (urgent, playful, premium). Costs $0.25 via x402.",
       parameters: {
         type: "object",
         properties: {
@@ -423,7 +423,7 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "generateAdImage",
-      description: "Generate an ad image using SDXL. Costs $0.04 via x402. Returns base64 image data directly in the response.",
+      description: "Generate an ad image using SDXL. Costs $0.35 via x402. Returns base64 image data directly in the response.",
       parameters: {
         type: "object",
         properties: {
