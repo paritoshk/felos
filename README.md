@@ -2,7 +2,7 @@
 
 **AI-powered marketing agent with x402 micropayments**
 
-Built with **Thesys C1** (Generative UI) + **Coinbase x402** + **MongoDB Atlas** + **Fireworks AI**
+Built with **Thesys C1** (Generative UI) + **x402** (Coinbase) + **MongoDB Atlas** + **Fireworks AI**
 
 ## Architecture
 
